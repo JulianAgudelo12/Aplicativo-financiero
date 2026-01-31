@@ -1,0 +1,15 @@
+---
+description: Ejecutar y reiniciar la app Mis Finanzas
+globs: 
+alwaysApply: false
+---
+
+# Terminal y reinicio de la app Mis Finanzas
+
+- Cuando hagas cambios en el código que requieran **hot restart** (por ejemplo `main.dart`, inicialización, providers o dependencias), ejecuta en la terminal del proyecto:
+  ```powershell
+  cd "c:\Users\agude\Desktop\App personal\mis_finanzas"
+  flutter run -d chrome
+  ```
+- Si Flutter ya está corriendo en otra terminal, el usuario puede pulsar **R** (mayúscula) ahí para hot restart, o puedes lanzar una nueva ejecución con el comando de arriba (se abrirá otra ventana de Chrome con la app actualizada).
+- Para solo recargar la UI sin reiniciar el proceso (hot reload), en la terminal donde corre Flutter se puede pulsar **r** (minúscula).
