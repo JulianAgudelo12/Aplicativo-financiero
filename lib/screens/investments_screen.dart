@@ -14,7 +14,7 @@ class InvestmentsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inversiones'),
+        title: const Text('Investments'),
         actions: [
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
@@ -120,7 +120,7 @@ class InvestmentsScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddEditInvestment(context),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Nueva inversión'),
+        label: const Text('New Investment'),
       ),
     );
   }
@@ -208,7 +208,7 @@ class InvestmentsScreen extends StatelessWidget {
               valueColor: investment.totalReturnPercent >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
             ),
             _DetailRow(label: 'Rendimiento anualizado', value: '${investment.annualizedReturn.toStringAsFixed(2)}%/año'),
-            _DetailRow(label: 'Fecha de inicio', value: dateFormat.format(investment.startDate)),
+            _DetailRow(label: 'Start date', value: dateFormat.format(investment.startDate)),
             _DetailRow(label: 'Días de inversión', value: '${investment.daysHeld} días'),
             if (investment.platform != null)
               _DetailRow(label: 'Plataforma', value: investment.platform!),
@@ -371,12 +371,12 @@ class InvestmentsScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar inversión'),
-        content: const Text('¿Eliminar esta inversión? Esta acción no se puede deshacer.'),
+        title: const Text('Delete investment'),
+        content: const Text('Delete this investment? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -386,7 +386,7 @@ class InvestmentsScreen extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('Eliminar'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -744,9 +744,9 @@ class _InvestmentTile extends StatelessWidget {
                 ),
                 PopupMenuButton<String>(
                   itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                    const PopupMenuItem(value: 'update', child: Text('Actualizar valor')),
-                    const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    const PopupMenuItem(value: 'update', child: Text('Update value')),
+                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],
                   onSelected: (v) {
                     if (v == 'edit') onEdit();
@@ -769,7 +769,7 @@ class _InvestmentTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Actualizar valor'),
+        title: const Text('Update value'),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
@@ -781,7 +781,7 @@ class _InvestmentTile extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -807,7 +807,7 @@ class _InvestmentTile extends StatelessWidget {
               }
               Navigator.pop(ctx);
             },
-            child: const Text('Guardar'),
+            child: const Text('Save'),
           ),
         ],
       ),
@@ -983,7 +983,7 @@ class _AddEditInvestmentSheetState extends State<_AddEditInvestmentSheet> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  isEditing ? 'Editar inversión' : 'Nueva inversión',
+                  isEditing ? 'Edit investment' : 'New investment',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -1126,7 +1126,7 @@ class _AddEditInvestmentSheetState extends State<_AddEditInvestmentSheet> {
                 // Fecha de inicio
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Fecha de inicio'),
+                  title: const Text('Start date'),
                   subtitle: Text(
                     DateFormat('d MMM y', 'es').format(_startDate),
                   ),
@@ -1161,19 +1161,19 @@ class _AddEditInvestmentSheetState extends State<_AddEditInvestmentSheet> {
                       labelText: 'Frecuencia de capitalización',
                     ),
                     items: const [
-                      DropdownMenuItem(value: CompoundFrequency.daily, child: Text('Diaria')),
-                      DropdownMenuItem(value: CompoundFrequency.monthly, child: Text('Mensual')),
-                      DropdownMenuItem(value: CompoundFrequency.quarterly, child: Text('Trimestral')),
-                      DropdownMenuItem(value: CompoundFrequency.semiannual, child: Text('Semestral')),
-                      DropdownMenuItem(value: CompoundFrequency.annual, child: Text('Anual')),
-                      DropdownMenuItem(value: CompoundFrequency.atMaturity, child: Text('Al vencimiento')),
+                      DropdownMenuItem(value: CompoundFrequency.daily, child: Text('Daily')),
+                      DropdownMenuItem(value: CompoundFrequency.monthly, child: Text('Monthly')),
+                      DropdownMenuItem(value: CompoundFrequency.quarterly, child: Text('Quarterly')),
+                      DropdownMenuItem(value: CompoundFrequency.semiannual, child: Text('Semiannual')),
+                      DropdownMenuItem(value: CompoundFrequency.annual, child: Text('Annual')),
+                      DropdownMenuItem(value: CompoundFrequency.atMaturity, child: Text('At maturity')),
                     ],
                     onChanged: (v) => setState(() => _compoundFrequency = v!),
                   ),
                   const SizedBox(height: 16),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Fecha de vencimiento'),
+                    title: const Text('Maturity date'),
                     subtitle: Text(
                       _maturityDate != null
                           ? DateFormat('d MMM y', 'es').format(_maturityDate!)
@@ -1202,7 +1202,7 @@ class _AddEditInvestmentSheetState extends State<_AddEditInvestmentSheet> {
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        child: const Text('Cancelar'),
+                        child: const Text('Cancel'),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1212,7 +1212,7 @@ class _AddEditInvestmentSheetState extends State<_AddEditInvestmentSheet> {
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        child: Text(isEditing ? 'Guardar' : 'Crear'),
+                        child: Text(isEditing ? 'Save' : 'Create'),
                       ),
                     ),
                   ],

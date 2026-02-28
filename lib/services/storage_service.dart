@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase/supabase.dart';
 
 import '../models/account.dart';
 import '../models/budget.dart';
@@ -15,6 +15,10 @@ import '../models/reminder.dart';
 import '../models/savings_goal.dart';
 import '../models/tag.dart';
 import '../models/transfer.dart';
+import 'supabase_config.dart';
+
+const _table = 'app_kv_store';
+const _globalProfile = 'global';
 
 const _keyExpenses = 'expenses';
 const _keyDistributionTarget = 'distributionTarget';
@@ -33,308 +37,313 @@ const _keyPinHash = 'pinHash';
 const _keyProfileId = 'profileId';
 const _keyCurrencyRates = 'currencyRates';
 
-/// Guarda y carga todos los datos en el dispositivo (web: localStorage).
 class StorageService {
-  SharedPreferences? _prefs;
-
-  Future<SharedPreferences> get _store async {
-    _prefs ??= await SharedPreferences.getInstance();
-    return _prefs!;
+  SupabaseClient get _client {
+    return SupabaseConfig.client;
   }
 
-  String _prefix(String? profileId) =>
-      profileId != null && profileId.isNotEmpty ? '${profileId}_' : '';
+  String _profile(String? profileId) =>
+      profileId != null && profileId.isNotEmpty ? profileId : _globalProfile;
 
-  Future<List<Expense>> getExpenses({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyExpenses);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+  Future<Map<String, dynamic>?> _row({
+    required String key,
+    String? profileId,
+  }) {
+    return _client
+        .from(_table)
+        .select('value_json,value_text,value_int')
+        .eq('profile_id', _profile(profileId))
+        .eq('store_key', key)
+        .maybeSingle();
+  }
+
+  Future<void> _setJson(
+    String key,
+    Object? value, {
+    String? profileId,
+  }) {
+    return _client.from(_table).upsert(
+      {
+        'profile_id': _profile(profileId),
+        'store_key': key,
+        'value_json': value,
+        'value_text': null,
+        'value_int': null,
+      },
+      onConflict: 'profile_id,store_key',
+    );
+  }
+
+  Future<void> _setText(
+    String key,
+    String? value, {
+    String? profileId,
+  }) async {
+    if (value == null) {
+      await _client
+          .from(_table)
+          .delete()
+          .eq('profile_id', _profile(profileId))
+          .eq('store_key', key);
+      return;
+    }
+    await _client.from(_table).upsert(
+      {
+        'profile_id': _profile(profileId),
+        'store_key': key,
+        'value_json': null,
+        'value_text': value,
+        'value_int': null,
+      },
+      onConflict: 'profile_id,store_key',
+    );
+  }
+
+  Future<void> _setInt(
+    String key,
+    int value, {
+    String? profileId,
+  }) {
+    return _client.from(_table).upsert(
+      {
+        'profile_id': _profile(profileId),
+        'store_key': key,
+        'value_json': null,
+        'value_text': null,
+        'value_int': value,
+      },
+      onConflict: 'profile_id,store_key',
+    );
+  }
+
+  List<T> _decodeList<T>(
+    dynamic raw,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((item) => fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
-  Future<void> saveExpenses(List<Expense> expenses, {String? profileId}) async {
-    final store = await _store;
-    final list = expenses.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyExpenses, jsonEncode(list));
+  Future<List<Expense>> getExpenses({String? profileId}) async {
+    final raw = (await _row(key: _keyExpenses, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Expense.fromJson);
+  }
+
+  Future<void> saveExpenses(List<Expense> expenses, {String? profileId}) {
+    return _setJson(
+      _keyExpenses,
+      expenses.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Category>> getCategories({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyCategories);
-    if (raw == null) return defaultCategories;
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null || list.isEmpty) return defaultCategories;
-    return list
-        .map((e) => Category.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyCategories, profileId: profileId))?['value_json'];
+    final categories = _decodeList(raw, Category.fromJson);
+    if (categories.isEmpty) return defaultCategories;
+    return categories;
   }
 
-  Future<void> saveCategories(List<Category> categories,
-      {String? profileId}) async {
-    final store = await _store;
-    final list = categories.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyCategories, jsonEncode(list));
+  Future<void> saveCategories(List<Category> categories, {String? profileId}) {
+    return _setJson(
+      _keyCategories,
+      categories.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Income>> getIncomes({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyIncomes);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => Income.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyIncomes, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Income.fromJson);
   }
 
-  Future<void> saveIncomes(List<Income> incomes, {String? profileId}) async {
-    final store = await _store;
-    final list = incomes.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyIncomes, jsonEncode(list));
+  Future<void> saveIncomes(List<Income> incomes, {String? profileId}) {
+    return _setJson(
+      _keyIncomes,
+      incomes.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Account>> getAccounts({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyAccounts);
-    if (raw == null) return [const Account(id: 'default', name: 'Principal')];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null || list.isEmpty) {
+    final raw = (await _row(key: _keyAccounts, profileId: profileId))?['value_json'];
+    final accounts = _decodeList(raw, Account.fromJson);
+    if (accounts.isEmpty) {
       return [const Account(id: 'default', name: 'Principal')];
     }
-    return list
-        .map((e) => Account.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return accounts;
   }
 
-  Future<void> saveAccounts(List<Account> accounts,
-      {String? profileId}) async {
-    final store = await _store;
-    final list = accounts.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyAccounts, jsonEncode(list));
+  Future<void> saveAccounts(List<Account> accounts, {String? profileId}) {
+    return _setJson(
+      _keyAccounts,
+      accounts.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Transfer>> getTransfers({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyTransfers);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => Transfer.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyTransfers, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Transfer.fromJson);
   }
 
-  Future<void> saveTransfers(List<Transfer> transfers,
-      {String? profileId}) async {
-    final store = await _store;
-    final list = transfers.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyTransfers, jsonEncode(list));
+  Future<void> saveTransfers(List<Transfer> transfers, {String? profileId}) {
+    return _setJson(
+      _keyTransfers,
+      transfers.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Budget>> getBudgets({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyBudgets);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => Budget.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyBudgets, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Budget.fromJson);
   }
 
-  Future<void> saveBudgets(List<Budget> budgets, {String? profileId}) async {
-    final store = await _store;
-    final list = budgets.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyBudgets, jsonEncode(list));
+  Future<void> saveBudgets(List<Budget> budgets, {String? profileId}) {
+    return _setJson(
+      _keyBudgets,
+      budgets.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<SavingsGoal>> getGoals({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyGoals);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => SavingsGoal.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyGoals, profileId: profileId))?['value_json'];
+    return _decodeList(raw, SavingsGoal.fromJson);
   }
 
-  Future<void> saveGoals(List<SavingsGoal> goals, {String? profileId}) async {
-    final store = await _store;
-    final list = goals.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyGoals, jsonEncode(list));
+  Future<void> saveGoals(List<SavingsGoal> goals, {String? profileId}) {
+    return _setJson(
+      _keyGoals,
+      goals.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<RecurringExpense>> getRecurring({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyRecurring);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => RecurringExpense.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyRecurring, profileId: profileId))?['value_json'];
+    return _decodeList(raw, RecurringExpense.fromJson);
   }
 
-  Future<void> saveRecurring(List<RecurringExpense> list,
-      {String? profileId}) async {
-    final store = await _store;
-    final data = list.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyRecurring, jsonEncode(data));
+  Future<void> saveRecurring(List<RecurringExpense> list, {String? profileId}) {
+    return _setJson(
+      _keyRecurring,
+      list.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Tag>> getTags({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyTags);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list.map((e) => Tag.fromJson(e as Map<String, dynamic>)).toList();
+    final raw = (await _row(key: _keyTags, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Tag.fromJson);
   }
 
-  Future<void> saveTags(List<Tag> tags, {String? profileId}) async {
-    final store = await _store;
-    final list = tags.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyTags, jsonEncode(list));
+  Future<void> saveTags(List<Tag> tags, {String? profileId}) {
+    return _setJson(
+      _keyTags,
+      tags.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Debt>> getDebts({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyDebts);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list.map((e) => Debt.fromJson(e as Map<String, dynamic>)).toList();
+    final raw = (await _row(key: _keyDebts, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Debt.fromJson);
   }
 
-  Future<void> saveDebts(List<Debt> debts, {String? profileId}) async {
-    final store = await _store;
-    final list = debts.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyDebts, jsonEncode(list));
+  Future<void> saveDebts(List<Debt> debts, {String? profileId}) {
+    return _setJson(
+      _keyDebts,
+      debts.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Investment>> getInvestments({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyInvestments);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list.map((e) => Investment.fromJson(e as Map<String, dynamic>)).toList();
+    final raw = (await _row(key: _keyInvestments, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Investment.fromJson);
   }
 
-  Future<void> saveInvestments(List<Investment> investments, {String? profileId}) async {
-    final store = await _store;
-    final list = investments.map((e) => e.toJson()).toList();
-    await store.setString(_prefix(profileId) + _keyInvestments, jsonEncode(list));
+  Future<void> saveInvestments(List<Investment> investments, {String? profileId}) {
+    return _setJson(
+      _keyInvestments,
+      investments.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<List<Reminder>> getReminders({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyReminders);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List<dynamic>?;
-    if (list == null) return [];
-    return list
-        .map((e) => Reminder.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = (await _row(key: _keyReminders, profileId: profileId))?['value_json'];
+    return _decodeList(raw, Reminder.fromJson);
   }
 
-  Future<void> saveReminders(List<Reminder> reminders,
-      {String? profileId}) async {
-    final store = await _store;
-    final list = reminders.map((e) => e.toJson()).toList();
-    await store.setString(
-        _prefix(profileId) + _keyReminders, jsonEncode(list));
+  Future<void> saveReminders(List<Reminder> reminders, {String? profileId}) {
+    return _setJson(
+      _keyReminders,
+      reminders.map((e) => e.toJson()).toList(),
+      profileId: profileId,
+    );
   }
 
   Future<String?> getPinHash() async {
-    final store = await _store;
-    return store.getString(_keyPinHash);
+    return (await _row(key: _keyPinHash))?['value_text'] as String?;
   }
 
-  Future<void> setPinHash(String? hash) async {
-    final store = await _store;
-    if (hash == null) {
-      await store.remove(_keyPinHash);
-    } else {
-      await store.setString(_keyPinHash, hash);
-    }
+  Future<void> setPinHash(String? hash) {
+    return _setText(_keyPinHash, hash);
   }
 
   Future<String?> getProfileId() async {
-    final store = await _store;
-    return store.getString(_keyProfileId);
+    return (await _row(key: _keyProfileId))?['value_text'] as String?;
   }
 
-  Future<void> setProfileId(String? id) async {
-    final store = await _store;
-    if (id == null) {
-      await store.remove(_keyProfileId);
-    } else {
-      await store.setString(_keyProfileId, id);
-    }
+  Future<void> setProfileId(String? id) {
+    return _setText(_keyProfileId, id);
   }
 
   Future<Map<String, double>> getCurrencyRates() async {
-    final store = await _store;
-    final raw = store.getString(_keyCurrencyRates);
-    if (raw == null) return {'COP': 1.0, 'USD': 0.00024};
-    final map = jsonDecode(raw) as Map<String, dynamic>?;
-    if (map == null) return {'COP': 1.0, 'USD': 0.00024};
-    return map.map((k, v) => MapEntry(k, (v as num).toDouble()));
+    final raw = (await _row(key: _keyCurrencyRates))?['value_json'];
+    if (raw is! Map) return {'COP': 1.0, 'USD': 0.00024};
+    return Map<String, dynamic>.from(raw).map(
+      (k, v) => MapEntry(k, (v as num).toDouble()),
+    );
   }
 
-  Future<void> setCurrencyRates(Map<String, double> rates) async {
-    final store = await _store;
-    final map = rates.map((k, v) => MapEntry(k, v));
-    await store.setString(_keyCurrencyRates, jsonEncode(map));
+  Future<void> setCurrencyRates(Map<String, double> rates) {
+    return _setJson(_keyCurrencyRates, rates);
   }
 
   Future<DistributionTarget?> getDistributionTarget({String? profileId}) async {
-    final store = await _store;
-    final raw = store.getString(_prefix(profileId) + _keyDistributionTarget);
-    if (raw == null) return null;
-    try {
-      final map = jsonDecode(raw) as Map<String, dynamic>?;
-      if (map == null) return null;
-      return DistributionTarget.fromJson(map);
-    } catch (_) {
-      return null;
-    }
+    final raw = (await _row(key: _keyDistributionTarget, profileId: profileId))?['value_json'];
+    if (raw is! Map) return null;
+    return DistributionTarget.fromJson(Map<String, dynamic>.from(raw));
   }
 
-  Future<void> saveDistributionTarget(DistributionTarget target,
-      {String? profileId}) async {
-    final store = await _store;
-    await store.setString(
-        _prefix(profileId) + _keyDistributionTarget, jsonEncode(target.toJson()));
+  Future<void> saveDistributionTarget(DistributionTarget target, {String? profileId}) {
+    return _setJson(_keyDistributionTarget, target.toJson(), profileId: profileId);
   }
 
   Future<int?> getInt(String key) async {
-    final store = await _store;
-    return store.getInt(key);
+    final value = (await _row(key: key))?['value_int'];
+    return value is int ? value : (value as num?)?.toInt();
   }
 
-  Future<void> setInt(String key, int value) async {
-    final store = await _store;
-    await store.setInt(key, value);
+  Future<void> setInt(String key, int value) {
+    return _setInt(key, value);
   }
 
   Future<String?> getString(String key) async {
-    final store = await _store;
-    return store.getString(key);
+    return (await _row(key: key))?['value_text'] as String?;
   }
 
-  Future<void> setString(String key, String value) async {
-    final store = await _store;
-    await store.setString(key, value);
+  Future<void> setString(String key, String value) {
+    return _setText(key, value);
   }
 
-  /// Exporta todos los datos como JSON (respaldo).
   Future<String> exportAllJson({String? profileId}) async {
     final p = profileId ?? await getProfileId();
     final expenses = await getExpenses(profileId: p);
@@ -370,7 +379,6 @@ class StorageService {
     return const JsonEncoder.withIndent('  ').convert(data);
   }
 
-  /// Restaura desde JSON (solo datos, no PIN).
   Future<void> importFromJson(String jsonStr, {String? profileId}) async {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     final p = profileId ?? await getProfileId();
@@ -448,7 +456,8 @@ class StorageService {
     }
     if (data['distributionTarget'] != null) {
       final target = DistributionTarget.fromJson(
-          data['distributionTarget'] as Map<String, dynamic>);
+        data['distributionTarget'] as Map<String, dynamic>,
+      );
       await saveDistributionTarget(target, profileId: p);
     }
   }

@@ -11,70 +11,149 @@ class BudgetsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Presupuestos')),
+      appBar: AppBar(title: const Text('Smart Budget')),
       body: Consumer<AppState>(
         builder: (context, state, _) {
-          if (!state.loaded) return const Center(child: CircularProgressIndicator());
+          if (!state.loaded) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           final now = DateTime.now();
           final month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
           final format = NumberFormat.currency(locale: 'es', symbol: '\$', decimalDigits: 0);
           final budgets = state.budgets.where((b) => b.month == month).toList();
-          if (budgets.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Sin presupuestos este mes'),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => _showAddBudget(context, state, month),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Definir presupuesto'),
-                  ),
-                ],
-              ),
-            );
-          }
-          return ListView.builder(
+
+          return ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: budgets.length,
-            itemBuilder: (context, index) {
-              final b = budgets[index];
-              final cat = state.categoryById(b.categoryId);
-              final spent = state.expenseTotalForCategoryMonth(b.categoryId, month);
-              final pct = b.limit <= 0 ? 0.0 : (spent / b.limit).clamp(0.0, 2.0);
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00D9FF), Color(0xFF10B981)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Smart Budget Planner',
+                      style: TextStyle(
+                        color: Color(0xFF0A0E1A),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Track category limits and overspending in real time.',
+                      style: TextStyle(color: Color(0xFF0A0E1A)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (budgets.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: scheme.outline.withValues(alpha: 0.2)),
+                  ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          if (cat != null)
-                            Icon(iconDataFromName(cat.iconName), color: cat.color, size: 24),
-                          const SizedBox(width: 8),
-                          Text(cat?.name ?? b.categoryId, style: Theme.of(context).textTheme.titleMedium),
-                        ],
+                      Icon(Icons.pie_chart_outline_rounded, size: 48, color: scheme.onSurfaceVariant),
+                      const SizedBox(height: 10),
+                      Text('No budgets set for this month', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: () => _showAddBudget(context, state, month),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Create Budget'),
                       ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: pct > 1 ? 1 : pct,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          pct > 1 ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${format.format(spent)} / ${format.format(b.limit)}', style: Theme.of(context).textTheme.bodySmall),
-                      if (pct > 1) Text('Excedido', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
                     ],
                   ),
-                ),
-              );
-            },
+                )
+              else
+                ...budgets.map((b) {
+                  final cat = state.categoryById(b.categoryId);
+                  final spent = state.expenseTotalForCategoryMonth(b.categoryId, month);
+                  final pct = b.limit <= 0 ? 0.0 : (spent / b.limit).clamp(0.0, 2.0);
+                  final overLimit = pct > 1;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: scheme.outline.withValues(alpha: 0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: (cat?.color ?? scheme.primary).withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                iconDataFromName(cat?.iconName ?? 'category'),
+                                color: cat?.color ?? scheme.primary,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(cat?.name ?? b.categoryId, style: Theme.of(context).textTheme.titleMedium),
+                            ),
+                            if (overLimit)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: scheme.error.withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Over limit',
+                                  style: TextStyle(
+                                    color: scheme.error,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LinearProgressIndicator(
+                          value: overLimit ? 1 : pct,
+                          minHeight: 7,
+                          borderRadius: BorderRadius.circular(6),
+                          backgroundColor: scheme.surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            overLimit ? scheme.error : const Color(0xFF00D9FF),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${format.format(spent)} / ${format.format(b.limit)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
           );
         },
       ),
@@ -97,26 +176,26 @@ class BudgetsScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('Nuevo presupuesto'),
+          title: const Text('Create Budget'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: categoryId,
-                decoration: const InputDecoration(labelText: 'Categoría'),
+                decoration: const InputDecoration(labelText: 'Category'),
                 items: state.rootCategories.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
                 onChanged: (v) => setState(() => categoryId = v),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: limitController,
-                decoration: const InputDecoration(labelText: 'Límite mensual', prefixText: '\$ '),
+                decoration: const InputDecoration(labelText: 'Monthly Limit', prefixText: '\$ '),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 if (categoryId == null) return;
@@ -125,7 +204,7 @@ class BudgetsScreen extends StatelessWidget {
                 state.setBudget(Budget(categoryId: categoryId!, month: month, limit: limit));
                 Navigator.pop(ctx);
               },
-              child: const Text('Guardar'),
+              child: const Text('Save'),
             ),
           ],
         ),

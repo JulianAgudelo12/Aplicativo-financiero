@@ -52,6 +52,10 @@ class AppState extends ChangeNotifier {
   DateTime? _filterDateTo;
   String _searchQuery = '';
   String? _filterAccountId;
+  int _stateVersion = 0;
+  int _dashboardCacheVersion = -1;
+  _DashboardMetrics? _dashboardCache;
+  _FilteredExpensesCache? _filteredExpensesCache;
 
   List<Expense> get expenses => List.unmodifiable(_expenses);
   List<Income> get incomes => List.unmodifiable(_incomes);
@@ -101,6 +105,17 @@ class AppState extends ChangeNotifier {
 
   /// Gastos filtrados según categoría, fechas, búsqueda y cuenta.
   List<Expense> get filteredExpenses {
+    final cache = _filteredExpensesCache;
+    if (cache != null &&
+        cache.stateVersion == _stateVersion &&
+        cache.categoryId == _filterCategoryId &&
+        cache.dateFrom == _filterDateFrom &&
+        cache.dateTo == _filterDateTo &&
+        cache.searchQuery == _searchQuery &&
+        cache.accountId == _filterAccountId) {
+      return cache.expenses;
+    }
+
     var list = _expenses;
     if (_filterCategoryId != null) {
       list = list.where((e) => e.categoryId == _filterCategoryId).toList();
@@ -119,7 +134,17 @@ class AppState extends ChangeNotifier {
     if (_filterAccountId != null) {
       list = list.where((e) => e.accountId == _filterAccountId).toList();
     }
-    return list;
+    final result = List<Expense>.unmodifiable(list);
+    _filteredExpensesCache = _FilteredExpensesCache(
+      stateVersion: _stateVersion,
+      categoryId: _filterCategoryId,
+      dateFrom: _filterDateFrom,
+      dateTo: _filterDateTo,
+      searchQuery: _searchQuery,
+      accountId: _filterAccountId,
+      expenses: result,
+    );
+    return result;
   }
 
   void setFilterCategory(String? id) {
@@ -154,23 +179,42 @@ class AppState extends ChangeNotifier {
 
   Future<void> load() async {
     if (_loaded) return;
-    _profileId = await _storage.getProfileId();
-    _expenses = await _storage.getExpenses(profileId: _profileId);
-    _categories = await _storage.getCategories(profileId: _profileId);
-    _incomes = await _storage.getIncomes(profileId: _profileId);
-    _accounts = await _storage.getAccounts(profileId: _profileId);
-    _transfers = await _storage.getTransfers(profileId: _profileId);
-    _budgets = await _storage.getBudgets(profileId: _profileId);
-    _goals = await _storage.getGoals(profileId: _profileId);
-    _recurring = await _storage.getRecurring(profileId: _profileId);
-    _tags = await _storage.getTags(profileId: _profileId);
-    _debts = await _storage.getDebts(profileId: _profileId);
-    _reminders = await _storage.getReminders(profileId: _profileId);
-    _investments = await _storage.getInvestments(profileId: _profileId);
-    _distributionTarget =
-        await _storage.getDistributionTarget(profileId: _profileId);
-    _themeModeIndex = (await _storage.getInt(_keyThemeMode)) ?? 2;
-    _accentColorIndex = (await _storage.getInt(_keyAccentIndex)) ?? 0;
+    final profileId = await _storage.getProfileId();
+    _profileId = profileId;
+
+    final data = await Future.wait<Object?>([
+      _storage.getExpenses(profileId: profileId),
+      _storage.getCategories(profileId: profileId),
+      _storage.getIncomes(profileId: profileId),
+      _storage.getAccounts(profileId: profileId),
+      _storage.getTransfers(profileId: profileId),
+      _storage.getBudgets(profileId: profileId),
+      _storage.getGoals(profileId: profileId),
+      _storage.getRecurring(profileId: profileId),
+      _storage.getTags(profileId: profileId),
+      _storage.getDebts(profileId: profileId),
+      _storage.getReminders(profileId: profileId),
+      _storage.getInvestments(profileId: profileId),
+      _storage.getDistributionTarget(profileId: profileId),
+      _storage.getInt(_keyThemeMode),
+      _storage.getInt(_keyAccentIndex),
+    ]);
+
+    _expenses = data[0] as List<Expense>;
+    _categories = data[1] as List<Category>;
+    _incomes = data[2] as List<Income>;
+    _accounts = data[3] as List<Account>;
+    _transfers = data[4] as List<Transfer>;
+    _budgets = data[5] as List<Budget>;
+    _goals = data[6] as List<SavingsGoal>;
+    _recurring = data[7] as List<RecurringExpense>;
+    _tags = data[8] as List<Tag>;
+    _debts = data[9] as List<Debt>;
+    _reminders = data[10] as List<Reminder>;
+    _investments = data[11] as List<Investment>;
+    _distributionTarget = data[12] as DistributionTarget?;
+    _themeModeIndex = (data[13] as int?) ?? 2;
+    _accentColorIndex = (data[14] as int?) ?? 0;
     _loaded = true;
     notifyListeners();
   }
@@ -528,36 +572,26 @@ class AppState extends ChangeNotifier {
   
   /// Gastos en el período seleccionado del dashboard
   List<Expense> get periodExpenses {
-    final (from, to) = _dashboardPeriod.getDateRange();
-    return _expenses
-        .where((e) => !e.date.isBefore(from) && !e.date.isAfter(to))
-        .toList();
+    return _dashboardMetrics.periodExpenses;
   }
 
   /// Ingresos en el período seleccionado del dashboard
   List<Income> get periodIncomes {
-    final (from, to) = _dashboardPeriod.getDateRange();
-    return _incomes
-        .where((i) => !i.date.isBefore(from) && !i.date.isAfter(to))
-        .toList();
+    return _dashboardMetrics.periodIncomes;
   }
 
   /// Total de gastos en el período
-  double get periodTotalExpenses => periodExpenses.fold(0.0, (sum, e) => sum + e.amount);
+  double get periodTotalExpenses => _dashboardMetrics.totalExpenses;
 
   /// Total de ingresos en el período
-  double get periodTotalIncomes => periodIncomes.fold(0.0, (sum, i) => sum + i.amount);
+  double get periodTotalIncomes => _dashboardMetrics.totalIncomes;
 
   /// Balance en el período
-  double get periodBalance => periodTotalIncomes - periodTotalExpenses;
+  double get periodBalance => _dashboardMetrics.balance;
 
   /// Gastos por categoría en el período
   Map<String, double> get periodExpensesByCategory {
-    final map = <String, double>{};
-    for (final e in periodExpenses) {
-      map[e.categoryId] = (map[e.categoryId] ?? 0) + e.amount;
-    }
-    return map;
+    return _dashboardMetrics.expensesByCategory;
   }
 
   /// Meta de distribución (porcentajes ideal). Si no hay guardada, devuelve la por defecto.
@@ -634,4 +668,85 @@ class AppState extends ChangeNotifier {
     _loaded = false;
     await load();
   }
+
+  _DashboardMetrics get _dashboardMetrics {
+    if (_dashboardCache != null && _dashboardCacheVersion == _stateVersion) {
+      return _dashboardCache!;
+    }
+    final (from, to) = _dashboardPeriod.getDateRange();
+
+    final periodExpenses = _expenses
+        .where((e) => !e.date.isBefore(from) && !e.date.isAfter(to))
+        .toList(growable: false);
+    final periodIncomes = _incomes
+        .where((i) => !i.date.isBefore(from) && !i.date.isAfter(to))
+        .toList(growable: false);
+
+    final byCategory = <String, double>{};
+    var totalExpenses = 0.0;
+    for (final e in periodExpenses) {
+      totalExpenses += e.amount;
+      byCategory[e.categoryId] = (byCategory[e.categoryId] ?? 0) + e.amount;
+    }
+
+    var totalIncomes = 0.0;
+    for (final i in periodIncomes) {
+      totalIncomes += i.amount;
+    }
+
+    _dashboardCache = _DashboardMetrics(
+      periodExpenses: List<Expense>.unmodifiable(periodExpenses),
+      periodIncomes: List<Income>.unmodifiable(periodIncomes),
+      totalExpenses: totalExpenses,
+      totalIncomes: totalIncomes,
+      balance: totalIncomes - totalExpenses,
+      expensesByCategory: Map<String, double>.unmodifiable(byCategory),
+    );
+    _dashboardCacheVersion = _stateVersion;
+    return _dashboardCache!;
+  }
+
+  @override
+  void notifyListeners() {
+    _stateVersion++;
+    super.notifyListeners();
+  }
+}
+
+class _DashboardMetrics {
+  const _DashboardMetrics({
+    required this.periodExpenses,
+    required this.periodIncomes,
+    required this.totalExpenses,
+    required this.totalIncomes,
+    required this.balance,
+    required this.expensesByCategory,
+  });
+
+  final List<Expense> periodExpenses;
+  final List<Income> periodIncomes;
+  final double totalExpenses;
+  final double totalIncomes;
+  final double balance;
+  final Map<String, double> expensesByCategory;
+}
+
+class _FilteredExpensesCache {
+  const _FilteredExpensesCache({
+    required this.stateVersion,
+    required this.categoryId,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.searchQuery,
+    required this.accountId,
+    required this.expenses,
+  });
+
+  final int stateVersion;
+  final String? categoryId;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+  final String searchQuery;
+  final String? accountId;
+  final List<Expense> expenses;
 }
